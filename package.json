@@ -1,0 +1,19 @@
+{
+  "name": "bsciam",
+  "version": "1.0.0",
+  "description": "Blockchain-based Secure Cloud Identity and Access Management Framework",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:contracts\" \"npm run dev:frontend\"",
+    "dev:contracts": "cd contracts && npm run dev",
+    "dev:frontend": "cd frontend && npm start",
+    "build": "cd contracts && npm run build && cd ../frontend && npm run build",
+    "test": "cd contracts && npm test"
+  },
+  "keywords": ["blockchain", "authentication", "ethereum", "metamask", "bsciam"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

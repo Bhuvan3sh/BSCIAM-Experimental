@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, FileText, Image as ImageIcon, File, Key, Trash2 } from 'lucide-react';
+import { Download, FileText, Image as ImageIcon, File, Key, Trash2, Edit } from 'lucide-react';
 import { decryptFile, saveDecryptedFile, idbGetEncrypted } from '../../utils/cryptoUtils';
 import { StoredFile } from '../../types';
 import { useWallet } from '../../context/WalletContext';
@@ -7,9 +7,10 @@ import { useWallet } from '../../context/WalletContext';
 interface FileListProps {
   files: StoredFile[];
   onDelete: (fileId: string) => Promise<void>;
+  onModify: (fileId: string) => void;
 }
 
-const FileList: React.FC<FileListProps> = ({ files, onDelete }) => {
+const FileList: React.FC<FileListProps> = ({ files, onDelete, onModify }) => {
   const [decryptingFile, setDecryptingFile] = useState<string | null>(null);
   const [decryptionKey, setDecryptionKey] = useState('');
   const [activeFile, setActiveFile] = useState<string | null>(null);
@@ -23,6 +24,23 @@ const FileList: React.FC<FileListProps> = ({ files, onDelete }) => {
     
     if (fileType.startsWith('image/')) {
       return <ImageIcon className="w-5 h-5 text-blue-500" />;
+    }
+    
+    if (fileType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
+      return <FileText className="w-5 h-5 text-orange-500" />; // PPTX
+    }
+    
+    if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      return <FileText className="w-5 h-5 text-blue-600" />; // DOCX
+    }
+    
+    if (fileType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
+        fileType === 'application/vnd.ms-excel') {
+      return <FileText className="w-5 h-5 text-green-500" />; // XLSX/XLS
+    }
+    
+    if (fileType === 'text/plain') {
+      return <FileText className="w-5 h-5 text-gray-500" />; // TXT
     }
     
     return <File className="w-5 h-5" />;
@@ -118,8 +136,7 @@ const FileList: React.FC<FileListProps> = ({ files, onDelete }) => {
                     </div>
                   </div>
                 </div>
-                <div className="ml-2 flex-shrink-0 flex space-x-2
-                ">
+                <div className="ml-2 flex-shrink-0 flex space-x-2">
                   <button
                     type="button"
                     onClick={() => handleDownload(file)}
@@ -128,6 +145,15 @@ const FileList: React.FC<FileListProps> = ({ files, onDelete }) => {
                   >
                     <Download className="w-3 h-3 mr-1" />
                     Download
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onModify(file.id)}
+                    disabled={!!decryptingFile}
+                    className="btn-primary text-xs px-3 py-1.5"
+                  >
+                    <Edit className="w-3 h-3 mr-1" />
+                    Modify
                   </button>
                   <button
                     type="button"

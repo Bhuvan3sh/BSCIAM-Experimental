@@ -49,6 +49,7 @@ interface WalletContextType {
   uploadFile: (file: File, encryptedData: any, key: string) => Promise<StoredFile>;
   downloadFile: (fileId: string, key: string) => Promise<void>;
   deleteStoredFile: (fileId: string) => void;
+  modifyFile: (fileId: string, file: File, encryptedData: any, key: string) => Promise<StoredFile>;
 
   // Activity & profile
   getRecentActivities: (limit?: number) => Array<{ id: string; type: string; details?: string; timestamp: string }>;
@@ -182,6 +183,74 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     );
     try { recordActivity('delete', fileToDelete.name); } catch {}
     return updatedFiles;
+  }, [wallet.account, getStoredFiles, recordActivity]);
+
+  // Modify (replace) an existing file
+  const modifyFile = useCallback(async (fileId: string, file: File, encryptedData: any, key: string): Promise<StoredFile> => {
+    if (!wallet.account) {
+      throw new Error('No wallet connected');
+    }
+    
+    if (!key) {
+      throw new Error('Encryption key is required');
+    }
+    
+    if (!encryptedData) {
+      throw new Error('No encrypted data provided');
+    }
+    
+    try {
+      setIsLoading(true);
+      const files = getStoredFiles();
+      const existingFile = files.find(f => f.id === fileId);
+      
+      if (!existingFile) {
+        throw new Error('File not found');
+      }
+      
+      // Validate that the new file has the same name and type
+      if (file.name !== existingFile.name) {
+        throw new Error(`File name must match. Expected: ${existingFile.name}, Got: ${file.name}`);
+      }
+      
+      if (file.type !== existingFile.type) {
+        throw new Error(`File type must match. Expected: ${existingFile.type}, Got: ${file.type}`);
+      }
+      
+      // Create updated file object with same ID but new data
+      const updatedFile: StoredFile = {
+        id: existingFile.id, // Keep the same ID
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        uploadedAt: new Date().toISOString(), // Update to current time to reflect modification
+        encryptedData: '',
+        metadata: {
+          name: file.name,
+          originalName: file.name,
+          type: file.type,
+          mimeType: file.type,
+          size: file.size,
+          lastModified: file.lastModified
+        }
+      };
+      
+      // Update the encrypted payload in IndexedDB
+      await idbPutEncrypted(updatedFile.id, encryptedData.encryptedData || encryptedData);
+      
+      // Update the file in the files array
+      const updatedFiles = files.map(f => f.id === fileId ? updatedFile : f);
+      localStorage.setItem(`files_${wallet.account}`, JSON.stringify(updatedFiles));
+      
+      try { recordActivity('upload', `Modified: ${file.name}`); } catch {}
+      
+      return updatedFile;
+    } catch (error) {
+      console.error('Error modifying file:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
   }, [wallet.account, getStoredFiles, recordActivity]);
 
   // Get the current encryption key
@@ -507,6 +576,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       return;
     },
     deleteStoredFile,
+    modifyFile,
     getRecentActivities,
     getAllActivities,
     recordActivity,

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import FileUpload from './FileUpload';
+import FileModify from './FileModify';
 import FileList from './FileList';
 import { StoredFile } from '../../types';
 import { PlusIcon } from '@heroicons/react/24/outline';
@@ -11,10 +12,12 @@ interface FileManagerProps {
 }
 
 const FileManager: React.FC<FileManagerProps> = ({ walletAddress }) => {
-  const { getStoredFiles, storeFile, deleteStoredFile } = useWallet();
+  const { getStoredFiles, storeFile, deleteStoredFile, modifyFile } = useWallet();
   const [files, setFiles] = useState<StoredFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [modifyingFileId, setModifyingFileId] = useState<string | null>(null);
+  const [isModifying, setIsModifying] = useState(false);
 
   // Load user's files on component mount and when wallet address changes
   useEffect(() => {
@@ -125,6 +128,61 @@ const FileManager: React.FC<FileManagerProps> = ({ walletAddress }) => {
     }
   };
 
+  const handleModifyFile = async (file: File, encryptedData: any, key: string): Promise<StoredFile | void> => {
+    console.log('[FileManager] handleModifyFile called with:', { 
+      fileName: file?.name, 
+      hasEncryptedData: !!encryptedData,
+      keyLength: key?.length,
+      fileId: modifyingFileId
+    });
+
+    if (!walletAddress) {
+      const errorMsg = 'No wallet connected';
+      console.error('[FileManager]', errorMsg);
+      throw new Error(errorMsg);
+    }
+    
+    if (!modifyingFileId) {
+      const errorMsg = 'No file selected for modification';
+      console.error('[FileManager]', errorMsg);
+      throw new Error(errorMsg);
+    }
+    
+    if (!encryptedData || !encryptedData.encryptedData) {
+      const errorMsg = 'No encrypted data received';
+      console.error('[FileManager]', errorMsg, { encryptedData });
+      throw new Error(errorMsg);
+    }
+    
+    setIsModifying(true);
+    
+    try {
+      console.log('[FileManager] Modifying file...');
+      // Modify the file using the wallet context
+      const updatedFile = await modifyFile(modifyingFileId, file, encryptedData, key);
+      console.log('[FileManager] File modified. Updated file:', updatedFile);
+      
+      // Update local state
+      setFiles(prevFiles => prevFiles.map(f => f.id === modifyingFileId ? updatedFile : f));
+      
+      // Close the modify modal
+      setModifyingFileId(null);
+      
+      toast.success('File modified successfully!');
+      console.log('[FileManager] Modification completed successfully');
+      return updatedFile;
+    } catch (error) {
+      console.error('File modification failed:', error);
+      throw error;
+    } finally {
+      setIsModifying(false);
+    }
+  };
+
+  const handleModifyClick = (fileId: string) => {
+    setModifyingFileId(fileId);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center fade-in">
@@ -142,7 +200,8 @@ const FileManager: React.FC<FileManagerProps> = ({ walletAddress }) => {
       <div className="card glass card-hover">
         <FileList 
           files={files} 
-          onDelete={handleDeleteFile} 
+          onDelete={handleDeleteFile}
+          onModify={handleModifyClick}
         />
       </div>
 
@@ -183,6 +242,38 @@ const FileManager: React.FC<FileManagerProps> = ({ walletAddress }) => {
                 >
                   Close
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modify Modal */}
+      {modifyingFileId && (
+        <div className="fixed z-10 inset-0 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+              <div className="absolute inset-0 bg-black opacity-75"></div>
+            </div>
+
+            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">
+              &#8203;
+            </span>
+
+            <div className="inline-block align-bottom bg-dark-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-dark-700 glass">
+              <div className="bg-dark-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="sm:flex sm:items-start">
+                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                    <div className="mt-2">
+                      <FileModify 
+                        file={files.find(f => f.id === modifyingFileId)!}
+                        onModify={handleModifyFile} 
+                        onCancel={() => setModifyingFileId(null)}
+                        isModifying={isModifying} 
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

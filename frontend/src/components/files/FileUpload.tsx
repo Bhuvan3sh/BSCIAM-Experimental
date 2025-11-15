@@ -33,10 +33,20 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUpload, isUploading }) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Only allow PDF and image files
-    const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/gif'];
+    // Allow PDF, images, Office documents, and text files
+    const validTypes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation', // PPTX
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // DOCX
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // XLSX
+      'application/vnd.ms-excel', // XLS
+      'text/plain' // TXT
+    ];
     if (!validTypes.includes(file.type)) {
-      setError('Only PDF and image files are allowed');
+      setError('Only PDF, images, Office documents (PPTX, DOCX, XLSX), and text files are allowed');
       return;
     }
 
@@ -153,6 +163,23 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUpload, isUploading }) => {
       return <ImageIcon className="w-6 h-6 text-blue-500" />;
     }
     
+    if (selectedFile.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
+      return <FileText className="w-6 h-6 text-orange-500" />; // PPTX
+    }
+    
+    if (selectedFile.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      return <FileText className="w-6 h-6 text-blue-600" />; // DOCX
+    }
+    
+    if (selectedFile.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
+        selectedFile.type === 'application/vnd.ms-excel') {
+      return <FileText className="w-6 h-6 text-green-500" />; // XLSX/XLS
+    }
+    
+    if (selectedFile.type === 'text/plain') {
+      return <FileText className="w-6 h-6 text-gray-500" />; // TXT
+    }
+    
     return <File className="w-6 h-6" />;
   };
 
@@ -166,7 +193,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUpload, isUploading }) => {
       
       <div className="mb-4">
         <label className="block text-sm font-medium text-white mb-2">
-          Select File (PDF or Image)
+          Select File (PDF, Images, Office Documents, or Text)
         </label>
         <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dark-600 border-dashed rounded-md card-hover">
           <div className="space-y-1 text-center">
@@ -204,13 +231,13 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUpload, isUploading }) => {
                       className="sr-only"
                       onChange={handleFileChange}
                       ref={fileInputRef}
-                      accept=".pdf,.jpg,.jpeg,.png,.gif"
+                      accept=".pdf,.jpg,.jpeg,.png,.gif,.pptx,.docx,.xlsx,.xls,.txt"
                     />
                   </label>
                   <p className="pl-1">or drag and drop</p>
                 </div>
                 <p className="text-xs text-dark-400">
-                  PDF, JPG, PNG, GIF up to 10MB
+                  PDF, Images, Office (PPTX, DOCX, XLSX), TXT up to 10MB
                 </p>
               </>
             )}

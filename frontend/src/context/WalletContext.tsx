@@ -4,7 +4,7 @@ import { BSCIAMAuthABI } from '../config/abi';
 import contracts from '../config/contracts.json';
 import { StoredFile } from '../types';
 import { UserProfile } from '../types';
-import { idbPutEncrypted, idbGetEncrypted } from '../utils/cryptoUtils';
+import { fileApi } from '../services/fileApi';
 
 declare global {
   interface Window {
@@ -44,11 +44,11 @@ interface WalletContextType {
   validateEncryptionKey: (key: string) => boolean;
   
   // File methods
-  getStoredFiles: () => StoredFile[];
-  storeFile: (file: StoredFile) => StoredFile[];
+  getStoredFiles: () => Promise<StoredFile[]>;
+  storeFile: (file: StoredFile) => Promise<StoredFile[]>;
   uploadFile: (file: File, encryptedData: any, key: string) => Promise<StoredFile>;
   downloadFile: (fileId: string, key: string) => Promise<void>;
-  deleteStoredFile: (fileId: string) => void;
+  deleteStoredFile: (fileId: string) => Promise<void>;
   modifyFile: (fileId: string, file: File, encryptedData: any, key: string) => Promise<StoredFile>;
 
   // Activity & profile
@@ -90,11 +90,16 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     return key;
   }, []);
 
-  // Get stored files for the current user
-  const getStoredFiles = useCallback((): StoredFile[] => {
+  // Get stored files for the current user (from server)
+  const getStoredFiles = useCallback(async (): Promise<StoredFile[]> => {
     if (!wallet.account) return [];
-    const files = localStorage.getItem(`files_${wallet.account}`);
-    return files ? JSON.parse(files) : [];
+    try {
+      const files = await fileApi.getFiles(wallet.account);
+      return files;
+    } catch (error) {
+      console.error('Error fetching files from server:', error);
+      return [];
+    }
   }, [wallet.account]);
 
   // Activity helpers
@@ -133,59 +138,61 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     return localStorage.getItem(`encryption_key_${wallet.account}`);
   }, [wallet.account]);
 
-  // Store a new file
-  const storeFile = useCallback((file: StoredFile) => {
+  // Store a new file (uploads to server)
+  const storeFile = useCallback(async (file: StoredFile): Promise<StoredFile[]> => {
     if (!wallet.account) {
       throw new Error('No wallet connected');
     }
     
-    const files = getStoredFiles();
-    // Check if file with same name already exists
-    const existingFileIndex = files.findIndex(f => f.name === file.name && f.uploadedAt === file.uploadedAt);
-    
-    let updatedFiles;
-    if (existingFileIndex >= 0) {
-      // Update existing file
-      updatedFiles = [...files];
-      updatedFiles[existingFileIndex] = file;
-    } else {
-      // Add new file
-      updatedFiles = [...files, file];
+    if (!file.encryptedData) {
+      throw new Error('File must have encrypted data to store');
     }
     
-    localStorage.setItem(
-      `files_${wallet.account}`, 
-      JSON.stringify(updatedFiles)
-    );
+    try {
+      // Upload to server
+      await fileApi.uploadFile({
+        fileId: file.id,
+        encryptedData: file.encryptedData,
+        metadata: file.metadata,
+        walletAddress: wallet.account,
+      });
+      
+      // Fetch updated list from server
+      const updatedFiles = await getStoredFiles();
+      
     // Record upload activity
     try { recordActivity('upload', file.name); } catch {}
+      
     return updatedFiles;
+    } catch (error) {
+      console.error('Error storing file:', error);
+      throw error;
+    }
   }, [wallet.account, getStoredFiles, recordActivity]);
 
-  // Delete a file
-  const deleteStoredFile = useCallback((fileId: string) => {
+  // Delete a file (from server)
+  const deleteStoredFile = useCallback(async (fileId: string): Promise<void> => {
     if (!wallet.account) {
       throw new Error('No wallet connected');
     }
     
-    const files = getStoredFiles();
+    try {
+      // Get file info before deletion for activity log
+      const files = await getStoredFiles();
     const fileToDelete = files.find(f => f.id === fileId);
     
-    if (!fileToDelete) {
-      throw new Error('File not found');
+      // Delete from server
+      await fileApi.deleteFile(fileId, wallet.account);
+      
+      // Record activity
+      try { recordActivity('delete', fileToDelete?.name || 'unknown'); } catch {}
+    } catch (error) {
+      console.error('Error deleting file:', error);
+      throw error;
     }
-    
-    const updatedFiles = files.filter(file => file.id !== fileId);
-    
-    localStorage.setItem(
-      `files_${wallet.account}`, 
-      JSON.stringify(updatedFiles)
-    );
-    try { recordActivity('delete', fileToDelete.name); } catch {}
-    return updatedFiles;
   }, [wallet.account, getStoredFiles, recordActivity]);
 
-  // Modify (replace) an existing file
+  // Modify (replace) an existing file (on server)
   const modifyFile = useCallback(async (fileId: string, file: File, encryptedData: any, key: string): Promise<StoredFile> => {
     if (!wallet.account) {
       throw new Error('No wallet connected');
@@ -201,7 +208,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     
     try {
       setIsLoading(true);
-      const files = getStoredFiles();
+      const files = await getStoredFiles();
       const existingFile = files.find(f => f.id === fileId);
       
       if (!existingFile) {
@@ -224,7 +231,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
         type: file.type,
         size: file.size,
         uploadedAt: new Date().toISOString(), // Update to current time to reflect modification
-        encryptedData: '',
+        encryptedData: '', // Empty - actual data stored on server
         metadata: {
           name: file.name,
           originalName: file.name,
@@ -235,12 +242,13 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
         }
       };
       
-      // Update the encrypted payload in IndexedDB
-      await idbPutEncrypted(updatedFile.id, encryptedData.encryptedData || encryptedData);
-      
-      // Update the file in the files array
-      const updatedFiles = files.map(f => f.id === fileId ? updatedFile : f);
-      localStorage.setItem(`files_${wallet.account}`, JSON.stringify(updatedFiles));
+      // Update encrypted data on server
+      await fileApi.updateFile(
+        fileId,
+        encryptedData.encryptedData || encryptedData,
+        updatedFile.metadata,
+        wallet.account
+      );
       
       try { recordActivity('upload', `Modified: ${file.name}`); } catch {}
       
@@ -258,7 +266,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     return encryptionKey;
   }, [encryptionKey]);
 
-  // Upload a file with encryption
+  // Upload a file with encryption (to server)
   const uploadFile = useCallback(async (file: File, encryptedData: any, key: string): Promise<StoredFile> => {
     if (!wallet.account) {
       throw new Error('No wallet connected');
@@ -274,7 +282,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     
     try {
       setIsLoading(true);
-      const storedFiles = getStoredFiles();
+      const storedFiles = await getStoredFiles();
       
       // Check if file with same name already exists
       const fileExists = storedFiles.some(f => 
@@ -292,7 +300,7 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
         type: file.type,
         size: file.size,
         uploadedAt: new Date().toISOString(),
-        encryptedData: '',
+        encryptedData: '', // Empty - actual data stored on server
         metadata: {
           name: file.name,
           originalName: file.name,
@@ -302,10 +310,14 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
           lastModified: file.lastModified
         }
       };
-      // Persist the encrypted payload in IndexedDB (non-volatile)
-      await idbPutEncrypted(newFile.id, encryptedData.encryptedData || encryptedData);
-      const updatedFiles = [...storedFiles, newFile];
-      localStorage.setItem(`files_${wallet.account}`, JSON.stringify(updatedFiles));
+      
+      // Upload encrypted data to server
+      await fileApi.uploadFile({
+        fileId: newFile.id,
+        encryptedData: encryptedData.encryptedData || encryptedData,
+        metadata: newFile.metadata,
+        walletAddress: wallet.account,
+      });
       
       return newFile;
     } catch (error) {
@@ -567,12 +579,11 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
     uploadFile,
     downloadFile: async (fileId: string, key: string) => {
       console.log('Downloading file:', fileId, 'with key:', key);
-      const files = getStoredFiles();
+      const files = await getStoredFiles();
       const file = files.find(f => f.id === fileId);
       if (!file) throw new Error('File not found');
-      const encryptedPayload = await idbGetEncrypted(fileId);
-      if (!encryptedPayload) throw new Error('No encrypted data found.');
-      // The UI path currently uses decryptFile directly; this method is a placeholder
+      // Encrypted data is fetched in FileList component via API
+      // This method is kept for interface compatibility
       return;
     },
     deleteStoredFile,

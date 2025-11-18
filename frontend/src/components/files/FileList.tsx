@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Download, FileText, Image as ImageIcon, File, Key, Trash2, Edit } from 'lucide-react';
-import { decryptFile, saveDecryptedFile, idbGetEncrypted } from '../../utils/cryptoUtils';
+import { decryptFile, saveDecryptedFile } from '../../utils/cryptoUtils';
 import { StoredFile } from '../../types';
 import { useWallet } from '../../context/WalletContext';
+import { fileApi } from '../../services/fileApi';
 
 interface FileListProps {
   files: StoredFile[];
@@ -15,7 +16,7 @@ const FileList: React.FC<FileListProps> = ({ files, onDelete, onModify }) => {
   const [decryptionKey, setDecryptionKey] = useState('');
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { validateEncryptionKey, recordActivity } = useWallet();
+  const { validateEncryptionKey, recordActivity, wallet } = useWallet();
 
   const getFileIcon = (fileType: string) => {
     if (fileType === 'application/pdf') {
@@ -75,9 +76,18 @@ const FileList: React.FC<FileListProps> = ({ files, onDelete, onModify }) => {
       const file = files.find(f => f.id === activeFile);
       if (!file) throw new Error('File not found');
 
-      // Decrypt the file
-      const encryptedPayload = await idbGetEncrypted(file.id);
-      const decryptedBlob = await decryptFile({ encryptedData: encryptedPayload || file.encryptedData, metadata: file.metadata }, decryptionKey);
+      if (!wallet.account) {
+        throw new Error('Wallet not connected');
+      }
+
+      // Fetch encrypted data from server
+      const { encryptedData } = await fileApi.getEncryptedFile(file.id, wallet.account);
+      
+      // Decrypt the file on client side
+      const decryptedBlob = await decryptFile(
+        { encryptedData, metadata: file.metadata },
+        decryptionKey
+      );
       
       // Save the decrypted file
       saveDecryptedFile(decryptedBlob, file.name);

@@ -1,13 +1,16 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Wallet, Shield, Lock } from 'lucide-react';
 import { useWallet } from '../context/WalletContext';
 
 const WalletConnect: React.FC = () => {
   const { wallet, userProfile, isLoading, error, connectWallet, disconnectWallet } = useWallet();
 
+  // Note: Redirect is handled by App.tsx, we just show a message here
+
   const handleConnect = async () => {
     try {
       await connectWallet();
+      // App.tsx will automatically show Dashboard when wallet.isConnected becomes true
     } catch (error) {
       console.error('Connection failed:', error);
     }
@@ -126,20 +129,18 @@ const WalletConnect: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex gap-3">
-                <button
-                  onClick={disconnectWallet}
-                  className="flex-1 btn-secondary"
-                >
-                  Disconnect
-                </button>
-                <button
-                  onClick={() => window.location.href = '/dashboard'}
-                  className="flex-1 btn-primary"
-                >
-                  Continue to Dashboard
-                </button>
+              <div className="mb-4 p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg">
+                <p className="text-blue-400 text-sm">
+                  Redirecting to Dashboard...
+                </p>
               </div>
+
+              <button
+                onClick={disconnectWallet}
+                className="w-full btn-secondary"
+              >
+                Disconnect
+              </button>
             </div>
           )}
         </div>

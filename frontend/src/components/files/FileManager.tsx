@@ -24,7 +24,7 @@ const FileManager: React.FC<FileManagerProps> = ({ walletAddress }) => {
     const loadFiles = async () => {
       try {
         if (walletAddress) {
-          const userFiles = getStoredFiles();
+          const userFiles = await getStoredFiles();
           console.log('Loaded user files:', userFiles);
           setFiles(userFiles);
         } else {
@@ -87,9 +87,9 @@ const FileManager: React.FC<FileManagerProps> = ({ walletAddress }) => {
         hasEncryptedData: !!newFile.encryptedData
       });
       
-      // Store the file using the wallet context
+      // Store the file using the wallet context (uploads to server)
       console.log('[FileManager] Storing file...');
-      const updatedFiles = storeFile(newFile);
+      const updatedFiles = await storeFile(newFile);
       console.log('[FileManager] File stored. Updated files count:', updatedFiles.length);
       
       // Update local state
@@ -117,14 +117,16 @@ const FileManager: React.FC<FileManagerProps> = ({ walletAddress }) => {
     }
     
     try {
-      // Delete the file using the wallet context
-      deleteStoredFile(fileId);
+      // Delete the file using the wallet context (from server)
+      await deleteStoredFile(fileId);
       
-      // Update local state
-      setFiles(prevFiles => prevFiles.filter(file => file.id !== fileId));
+      // Refresh files from server
+      const updatedFiles = await getStoredFiles();
+      setFiles(updatedFiles);
       
     } catch (error) {
       console.error('Failed to delete file:', error);
+      toast.error('Failed to delete file. Please try again.');
     }
   };
 
@@ -158,12 +160,13 @@ const FileManager: React.FC<FileManagerProps> = ({ walletAddress }) => {
     
     try {
       console.log('[FileManager] Modifying file...');
-      // Modify the file using the wallet context
+      // Modify the file using the wallet context (updates on server)
       const updatedFile = await modifyFile(modifyingFileId, file, encryptedData, key);
       console.log('[FileManager] File modified. Updated file:', updatedFile);
       
-      // Update local state
-      setFiles(prevFiles => prevFiles.map(f => f.id === modifyingFileId ? updatedFile : f));
+      // Refresh files from server
+      const updatedFiles = await getStoredFiles();
+      setFiles(updatedFiles);
       
       // Close the modify modal
       setModifyingFileId(null);
@@ -200,7 +203,7 @@ const FileManager: React.FC<FileManagerProps> = ({ walletAddress }) => {
       <div className="card glass card-hover">
         <FileList 
           files={files} 
-          onDelete={handleDeleteFile}
+          onDelete={handleDeleteFile} 
           onModify={handleModifyClick}
         />
       </div>

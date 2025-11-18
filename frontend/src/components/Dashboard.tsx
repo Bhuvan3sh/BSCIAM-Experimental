@@ -43,12 +43,21 @@ const Dashboard: React.FC = () => {
 
   // Update file count when wallet account changes
   useEffect(() => {
+    const loadFileCount = async () => {
     if (wallet.account) {
-      const files = getStoredFiles();
+        try {
+          const files = await getStoredFiles();
       setFileCount(files.length);
+        } catch (error) {
+          console.error('Error loading file count:', error);
+          setFileCount(0);
+        }
     } else {
       setFileCount(0);
     }
+    };
+    
+    loadFileCount();
   }, [wallet.account, getStoredFiles]);
 
   // Load leaderboard users when tab opens
